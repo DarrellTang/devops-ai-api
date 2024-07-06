@@ -44,7 +44,12 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         req.method().to_string(),
         req.path()
     );
-
+ 
+    // Handle CORS preflight requests
+    if req.method() == Method::Options {
+        return handle_cors_preflight();
+    }
+    
     let router = Router::new();
     router
         .get_async("/api/topics", handle_get_topics)
@@ -54,6 +59,29 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/chat/:topicId", handle_post_chat)
         .run(req, env)
         .await
+        .map(|mut res| {
+            add_cors_headers(&mut res);
+            res
+        })
+}
+
+fn handle_cors_preflight() -> Result<Response> {
+    let mut headers = Headers::new();
+    headers.set("Access-Control-Allow-Origin", "https://devops-ai-react.pages.dev")?;
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")?;
+    headers.set("Access-Control-Allow-Headers", "Content-Type")?;
+    headers.set("Access-Control-Max-Age", "86400")?;
+    
+    Ok(Response::ok("").unwrap().with_headers(headers))
+}
+
+fn add_cors_headers(res: &mut Response) {
+    res.headers_mut()
+        .set("Access-Control-Allow-Origin", "https://devops-ai-react.pages.dev").unwrap();
+    res.headers_mut()
+        .set("Access-Control-Allow-Methods", "GET, POST, OPTIONS").unwrap();
+    res.headers_mut()
+        .set("Access-Control-Allow-Headers", "Content-Type").unwrap();
 }
 
 async fn handle_get_topics(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
