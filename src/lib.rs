@@ -1,5 +1,6 @@
 use worker::*;
 use serde::{Deserialize, Serialize};
+use reqwest::Client;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Topic {
@@ -35,6 +36,45 @@ struct ChatMessage {
 #[derive(Debug, Serialize)]
 struct ChatResponse {
     response: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ClaudeRequest {
+    model: String,
+    max_tokens: u32,
+    messages: Vec<ClaudeMessage>,
+}
+
+#[derive(Debug, Serialize)]
+struct ClaudeMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeResponse {
+    content: Vec<ClaudeContent>,
+    id: String,
+    model: String,
+    role: String,
+    stop_reason: Option<String>,
+    stop_sequence: Option<String>,
+    #[serde(rename = "type")]
+    response_type: String,
+    usage: ClaudeUsage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeContent {
+    text: String,
+    #[serde(rename = "type")]
+    content_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeUsage {
+    input_tokens: u32,
+    output_tokens: u32,
 }
 
 #[event(fetch)]
@@ -94,8 +134,16 @@ async fn handle_get_topics(_req: Request, _ctx: RouteContext<()>) -> Result<Resp
             description: "Learn how to set up your GitHub account".to_string(),
             steps: vec![
                 "Create a GitHub account".to_string(),
-                "Set up SSH keys".to_string(),
+                "Set up your profile".to_string(),
+                "Install Git on your local machine".to_string(),
+                "Configure Git with your GitHub credentials".to_string(),
+                "Set up SSH keys for secure authentication".to_string(),
                 "Create your first repository".to_string(),
+                "Clone the repository to your local machine".to_string(),
+                "Make changes and commit them".to_string(),
+                "Push changes to GitHub".to_string(),
+                "Create a branch and make a pull request".to_string(),
+                "Collaborate on a project".to_string(),
             ],
         },
         Topic {
@@ -230,22 +278,60 @@ async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result<Res
         }
     };
 
-    // Validate input
     if chat_message.message.trim().is_empty() {
         return Response::error("Message cannot be empty", 400);
     }
 
-    // In a real implementation, you would process the message here,
-    // potentially sending it to an AI service for a response
-    // For now, we'll just echo the message back with a prefix
-    let response = format!("You said: {}. This is a placeholder response for topic: {}", chat_message.message, topic_id);
+    let api_key = ctx.env.secret("ANTHROPIC_API_KEY")?.to_string();
 
-    Response::from_json(&ChatResponse { response })
+    match call_claude_api(&chat_message.message, &api_key).await {
+        Ok(response) => Response::from_json(&ChatResponse { response }),
+        Err(e) => {
+            console_error!("Error calling Claude API: {:?}", e);
+            Response::error("Failed to generate response", 500)
+        }
+    }
 }
 
-// Helper function to check if a topic exists
+async fn call_claude_api(message: &str, api_key: &str) -> Result<String> {
+    let client = Client::new();
+    let url = "https://api.anthropic.com/v1/messages";
+
+    let claude_request = ClaudeRequest {
+        model: "claude-3-5-sonnet-20240620".to_string(),
+        max_tokens: 1024,
+        messages: vec![ClaudeMessage {
+            role: "user".to_string(),
+            content: message.to_string(),
+        }],
+    };
+
+    let response = match client.post(url)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&claude_request)
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => return Err(Error::from(format!("Failed to send request: {}", e))),
+    };
+
+    if !response.status().is_success() {
+        return Err(Error::from(format!("API request failed: {}", response.status())));
+    }
+
+    let claude_response: ClaudeResponse = match response.json().await {
+        Ok(resp) => resp,
+        Err(e) => return Err(Error::from(format!("Failed to parse API response: {}", e))),
+    };
+    
+    claude_response.content.first()
+        .map(|content| content.text.clone())
+        .ok_or_else(|| Error::from("No content in API response"))
+}
+
 fn topic_exists(topic_id: &str) -> bool {
-    // In a real implementation, this would check against a database
-    // For now, we'll just check against our hardcoded topics
     matches!(topic_id, "github-setup" | "docker-basics")
 }

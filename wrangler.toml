@@ -7,3 +7,6 @@ command = "cargo install -q worker-build && worker-build --release"
 
 [env.dev]
 build = { command = "cargo install -q worker-build && worker-build --dev" }
+
+[vars]
+ANTHROPIC_API_KEY = ""  # The actual value will be populated from the Cloudflare dashboard
