@@ -203,8 +203,8 @@ async fn handle_get_progress(_req: Request, ctx: RouteContext<()>) -> Result<Res
     // For now, we'll return a hardcoded progress
     let progress = Progress {
         topic_id: topic_id.to_string(),
-        completed_steps: vec![0, 1],  // Assuming steps 0 and 1 are completed
-        current_step: 2,  // Assuming the user is currently on step 2
+        completed_steps: vec![0],  // Assuming steps 0 and 1 are completed
+        current_step: 1,  // Assuming the user is currently on step 2
     };
 
     Response::from_json(&progress)
