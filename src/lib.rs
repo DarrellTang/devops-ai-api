@@ -1,5 +1,6 @@
 use worker::*;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use reqwest::Client;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,9 +20,10 @@ struct GenericResponse {
 #[derive(Debug, Deserialize)]
 struct ProgressUpdate {
     completed_step: usize,
+    reset: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Progress {
     topic_id: String,
     completed_steps: Vec<usize>,
@@ -97,6 +99,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/progress/:topicId", handle_post_progress)
         .get_async("/api/progress/:topicId", handle_get_progress)
         .post_async("/api/chat/:topicId", handle_post_chat)
+        .post_async("/api/reset/:topicId", handle_reset_progress)
         .run(req, env)
         .await
         .map(|mut res| {
@@ -177,8 +180,16 @@ async fn handle_get_topic(_req: Request, ctx: RouteContext<()>) -> Result<Respon
             description: "Learn how to set up your GitHub account".to_string(),
             steps: vec![
                 "Create a GitHub account".to_string(),
-                "Set up SSH keys".to_string(),
+                "Set up your profile".to_string(),
+                "Install Git on your local machine".to_string(),
+                "Configure Git with your GitHub credentials".to_string(),
+                "Set up SSH keys for secure authentication".to_string(),
                 "Create your first repository".to_string(),
+                "Clone the repository to your local machine".to_string(),
+                "Make changes and commit them".to_string(),
+                "Push changes to GitHub".to_string(),
+                "Create a branch and make a pull request".to_string(),
+                "Collaborate on a project".to_string(),
             ],
         },
         "docker-basics" => Topic {
@@ -200,15 +211,13 @@ async fn handle_get_topic(_req: Request, ctx: RouteContext<()>) -> Result<Respon
 async fn handle_post_progress(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     console_log!("Handling POST request to /api/progress/:topicId");
 
-    let topic_id: &str = ctx.param("topicId").map(|s| s.as_str()).unwrap_or("");
+    let topic_id: String = ctx.param("topicId").map(|s| s.to_string()).unwrap_or_default();
     console_log!("Topic ID for progress update: {}", topic_id);
 
-    // Check if the topic exists
-    if !topic_exists(topic_id) {
+    if !topic_exists(&topic_id) {
         return Response::error("Topic not found", 404);
     }
 
-    // Parse the JSON body
     let progress_update: ProgressUpdate = match req.json().await {
         Ok(update) => update,
         Err(e) => {
@@ -217,42 +226,55 @@ async fn handle_post_progress(mut req: Request, ctx: RouteContext<()>) -> Result
         }
     };
 
-    // Validate input
-    if progress_update.completed_step > 100 {  // Assuming max 100 steps per topic
-        return Response::error("Invalid step number", 400);
-    }
+    let kv = ctx.kv("PROGRESS_STORE")?;
+    let mut progress: Progress = match kv.get(&topic_id).json().await? {
+        Some(p) => p,
+        None => Progress {
+            topic_id: topic_id.clone(),
+            completed_steps: vec![],
+            current_step: 0,
+        },
+    };
 
-    // In a real implementation, you would update the progress in a database
-    // For now, we'll just log the update and return a success message
-    console_log!(
-        "Updated progress for topic {}: Step {} completed",
-        topic_id,
-        progress_update.completed_step
-    );
+    console_log!("Current progress before update: {:?}", progress);
+
+    if progress.completed_steps.contains(&progress_update.completed_step) {
+        console_log!("Step {} already completed", progress_update.completed_step);
+    } else {
+        progress.completed_steps.push(progress_update.completed_step);
+        progress.completed_steps.sort(); // Ensure the list is always sorted
+        progress.current_step = progress_update.completed_step + 1;
+        
+        console_log!("Updated progress: {:?}", progress);
+
+        kv.put(&topic_id, serde_json::to_string(&progress)?)?
+            .execute().await?;
+    }
 
     Response::from_json(&GenericResponse {
         status: 200,
-        message: format!("Progress updated for topic {}. Step {} marked as completed.", topic_id, progress_update.completed_step),
+        message: format!("Progress updated for topic {}.", topic_id),
     })
 }
 
 async fn handle_get_progress(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     console_log!("Handling GET request to /api/progress/:topicId");
 
-    let topic_id: &str = ctx.param("topicId").map(|s| s.as_str()).unwrap_or("");
+    let topic_id: String = ctx.param("topicId").map(|s| s.to_string()).unwrap_or_default();
     console_log!("Requested progress for topic ID: {}", topic_id);
 
-    // Check if the topic exists
-    if !topic_exists(topic_id) {
+    if !topic_exists(&topic_id) {
         return Response::error("Topic not found", 404);
     }
 
-    // In a real implementation, you would fetch the progress from a database
-    // For now, we'll return a hardcoded progress
-    let progress = Progress {
-        topic_id: topic_id.to_string(),
-        completed_steps: vec![0],  // Assuming steps 0 and 1 are completed
-        current_step: 1,  // Assuming the user is currently on step 2
+    let kv = ctx.kv("PROGRESS_STORE")?;
+    let progress: Progress = match kv.get(&topic_id).json().await? {
+        Some(p) => p,
+        None => Progress {
+            topic_id: topic_id.clone(),
+            completed_steps: vec![],
+            current_step: 0,
+        },
     };
 
     Response::from_json(&progress)
@@ -264,12 +286,10 @@ async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result<Res
     let topic_id: &str = ctx.param("topicId").map(|s| s.as_str()).unwrap_or("");
     console_log!("Chat message for topic ID: {}", topic_id);
 
-    // Check if the topic exists
     if !topic_exists(topic_id) {
         return Response::error("Topic not found", 404);
     }
 
-    // Parse the JSON body
     let chat_message: ChatMessage = match req.json().await {
         Ok(message) => message,
         Err(e) => {
@@ -282,7 +302,7 @@ async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result<Res
         return Response::error("Message cannot be empty", 400);
     }
 
-    let api_key = ctx.env.secret("ANTHROPIC_API_KEY")?.to_string();
+    let api_key = ctx.secret("ANTHROPIC_API_KEY")?.to_string();
 
     match call_claude_api(&chat_message.message, &api_key).await {
         Ok(response) => Response::from_json(&ChatResponse { response }),
@@ -291,6 +311,32 @@ async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result<Res
             Response::error("Failed to generate response", 500)
         }
     }
+}
+
+async fn handle_reset_progress(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    console_log!("Handling POST request to /api/reset/:topicId");
+
+    let topic_id: String = ctx.param("topicId").map(|s| s.to_string()).unwrap_or_default();
+    console_log!("Resetting progress for topic ID: {}", topic_id);
+
+    if !topic_exists(&topic_id) {
+        return Response::error("Topic not found", 404);
+    }
+
+    let kv = ctx.kv("PROGRESS_STORE")?;
+    let progress = Progress {
+        topic_id: topic_id.clone(),
+        completed_steps: vec![],
+        current_step: 0,
+    };
+
+    kv.put(&topic_id, serde_json::to_string(&progress)?)?
+        .execute().await?;
+
+    Response::from_json(&GenericResponse {
+        status: 200,
+        message: format!("Progress reset for topic {}.", topic_id),
+    })
 }
 
 async fn call_claude_api(message: &str, api_key: &str) -> Result<String> {
