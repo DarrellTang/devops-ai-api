@@ -57,24 +57,53 @@ pub async fn handle_get_topic(_req: Request, ctx: RouteContext<()>) -> Result<Re
     let topic_id: &str = ctx.param("topicId").map(|s| s.as_str()).unwrap_or("");
     console_log!("Requested topic ID: {}", topic_id);
 
-    // In a real implementation, you would fetch the topic from a database
-    // For now, we'll return a hardcoded topic if the ID matches, or a 404 if it doesn't
     let topic = match topic_id {
         "github-setup" => Topic {
             id: "github-setup".to_string(),
             title: "GitHub Setup".to_string(),
-            description: "Learn how to set up your GitHub account".to_string(),
+            description: "Learn how to set up your GitHub account and start using Git".to_string(),
             initial_message: "Welcome to the GitHub Setup guide! This interactive tutorial will help you set up and use a GitHub account. Click on the first step to begin.".to_string(),
             steps: vec![
                 Step {
                     title: "Create a GitHub account".to_string(),
-                    prompt: "I'd like to create a GitHub account. Can you provide me with step-by-step instructions on how to do this? Please include information on:\n1. How to navigate to the GitHub signup page\n2. What information I'll need to provide\n3. How to choose a good username\n4. Tips for creating a secure password\n5. How to verify my email address\n6. Any important settings I should configure after creating my account\nThank you!".to_string(),
+                    prompt: "Provide a concise, step-by-step guide on how to create a GitHub account, focusing only on the essential steps.".to_string(),
                 },
                 Step {
-                    title: "Set up your profile".to_string(),
-                    prompt: "Now that I have created my GitHub account, how do I set up my profile? Please provide guidance on:\n1. How to access my profile settings\n2. What information should I include in my profile\n3. How to add a profile picture\n4. How to write an effective bio\n5. Any other important profile elements I should consider\nThank you!".to_string(),
+                    title: "Install Git on your local machine".to_string(),
+                    prompt: "Provide a short, clear explanation on how to install Git on a local machine, mentioning steps for common operating systems.".to_string(),
                 },
-                // Add more steps as needed
+                Step {
+                    title: "Set up SSH keys for secure authentication".to_string(),
+                    prompt: "Provide a brief, step-by-step guide on how to set up SSH keys for GitHub authentication.".to_string(),
+                },
+                Step {
+                    title: "Configure Git with your GitHub credentials".to_string(),
+                    prompt: "Explain concisely how to configure Git with GitHub credentials, focusing only on the essential commands.".to_string(),
+                },
+                Step {
+                    title: "Create your first repository".to_string(),
+                    prompt: "Explain succinctly how to create a new repository on GitHub, covering only the basic steps.".to_string(),
+                },
+                Step {
+                    title: "Clone the repository to your local machine".to_string(),
+                    prompt: "Provide a concise explanation of how to clone a GitHub repository to a local machine, including the basic command.".to_string(),
+                },
+                Step {
+                    title: "Make changes and commit them".to_string(),
+                    prompt: "Explain briefly how to make changes to files and commit them using Git, focusing on the essential commands.".to_string(),
+                },
+                Step {
+                    title: "Push changes to GitHub".to_string(),
+                    prompt: "Provide a short, clear explanation of how to push local commits to GitHub, including the basic command.".to_string(),
+                },
+                Step {
+                    title: "Create a branch and make a pull request".to_string(),
+                    prompt: "Explain concisely how to create a branch and make a pull request on GitHub, covering only the essential steps.".to_string(),
+                },
+                Step {
+                    title: "Collaborate on a project".to_string(),
+                    prompt: "Provide a brief overview of how to start collaborating on a GitHub project, mentioning key concepts like forking and contributing.".to_string(),
+                },
             ],
         },
         _ => return Response::error("Topic not found", 404),
