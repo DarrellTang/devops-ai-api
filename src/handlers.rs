@@ -1,8 +1,9 @@
 //! This module contains handler functions for all API endpoints.
 
 use worker::*;
-use crate::types::{Topic, Step, Progress, ProgressUpdate, ChatMessage, ChatResponse, GenericResponse};
+use crate::types::{Topic, Step, Progress, ProgressUpdate, ChatMessage, ChatResponse, GenericResponse, ConversationHistory, TimestampedChatMessage};
 use crate::claude;
+use chrono::Utc;
 
 /// Handles GET request for all topics.
 ///
@@ -62,7 +63,32 @@ pub async fn handle_get_topic(_req: Request, ctx: RouteContext<()>) -> Result<Re
             id: "github-setup".to_string(),
             title: "GitHub Setup".to_string(),
             description: "Learn how to set up your GitHub account and start using Git".to_string(),
-            initial_message: "Welcome to the GitHub Setup guide! This interactive tutorial will help you set up and use a GitHub account. Click on the first step to begin.".to_string(),
+            initial_message: "Welcome to the GitHub Setup guide! This interactive tutorial will help you set up and use a GitHub account. Here's how it works:
+
+1. Steps and Prompts:
+   - On the left, you'll see a list of steps in your GitHub learning journey.
+   - Each step is also a pre-written question that you can send to me, your AI assistant.
+   - Clicking on a step will send its associated question, and I'll provide detailed instructions or information.
+
+2. Learning Process:
+   - Start with the first step and work your way down the list.
+   - Click on a step to see instructions for that part of the setup process.
+   - Follow the instructions and ask any additional questions you have in the chat.
+
+3. Marking Progress:
+   - After completing a step, click the checkmark icon next to the send button to mark it as done.
+   - This helps you keep track of your progress and tells me you're ready for the next step.
+
+4. Flexibility:
+   - Feel free to click on any step, even out of order, if you need specific information.
+   - If you're already familiar with some steps, you can mark them as complete and move on.
+
+5. Additional Questions:
+   - At any point, you can type your own questions in the chat for more clarification or help.
+
+Remember, I'm here to assist you throughout the process. Don't hesitate to ask for more explanations or examples if something isn't clear.
+
+Are you ready to begin? Click on the first step whenever you're ready to start your GitHub setup journey!".to_string(),
             steps: vec![
                 Step {
                     title: "Create a GitHub account".to_string(),
@@ -140,7 +166,7 @@ pub async fn handle_post_progress(mut req: Request, ctx: RouteContext<()>) -> Re
         }
     };
 
-    let kv = ctx.kv("PROGRESS_STORE")?;
+    let kv = ctx.kv("DATA_STORE")?;
     let mut progress: Progress = match kv.get(&topic_id).json().await? {
         Some(p) => p,
         None => Progress {
@@ -191,7 +217,7 @@ pub async fn handle_get_progress(_req: Request, ctx: RouteContext<()>) -> Result
         return Response::error("Topic not found", 404);
     }
 
-    let kv = ctx.kv("PROGRESS_STORE")?;
+    let kv = ctx.kv("DATA_STORE")?;
     let progress: Progress = match kv.get(&topic_id).json().await? {
         Some(p) => p,
         None => Progress {
@@ -217,10 +243,10 @@ pub async fn handle_get_progress(_req: Request, ctx: RouteContext<()>) -> Result
 pub async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     console_log!("Handling POST request to /api/chat/:topicId");
 
-    let topic_id: &str = ctx.param("topicId").map(|s| s.as_str()).unwrap_or("");
+    let topic_id: String = ctx.param("topicId").map(|s| s.to_string()).unwrap_or_default();
     console_log!("Chat message for topic ID: {}", topic_id);
 
-    if !topic_exists(topic_id) {
+    if !topic_exists(&topic_id) {
         return Response::error("Topic not found", 404);
     }
 
@@ -236,10 +262,49 @@ pub async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result
         return Response::error("Message cannot be empty", 400);
     }
 
+    let kv = ctx.kv("DATA_STORE")?;
+    let conversation_key = format!("conversation_{}", topic_id);
+
+    // Retrieve existing conversation or create a new one
+    let mut conversation: ConversationHistory = match kv.get(&conversation_key).json().await? {
+        Some(c) => c,
+        None => ConversationHistory {
+            topic_id: topic_id.clone(),
+            messages: vec![],
+        },
+    };
+
+    // Add the new user message to the conversation
+    conversation.messages.push(TimestampedChatMessage {
+        role: "user".to_string(),
+        content: chat_message.message.clone(),
+        timestamp: Utc::now(),
+    });
+
     let api_key = ctx.secret("ANTHROPIC_API_KEY")?.to_string();
 
-    match claude::call_claude_api(&chat_message.message, &api_key).await {
-        Ok(response) => Response::from_json(&ChatResponse { response }),
+    // Call Claude API with the full conversation history
+    match claude::call_claude_api_with_history(&conversation.messages, &api_key).await {
+        Ok(response) => {
+            // Add Claude's response to the conversation history
+            conversation.messages.push(TimestampedChatMessage {
+                role: "assistant".to_string(),
+                content: response.clone(),
+                timestamp: Utc::now(),
+            });
+
+            // Implement conversation management strategy (e.g., truncation)
+            if conversation.messages.len() > 50 {  // Adjust this number as needed
+                conversation.messages = conversation.messages.split_off(conversation.messages.len() - 50);
+            }
+
+            // Store the updated conversation
+            kv.put(&conversation_key, serde_json::to_string(&conversation)?)?
+              .execute()
+              .await?;
+
+            Response::from_json(&ChatResponse { response })
+        },
         Err(e) => {
             console_error!("Error calling Claude API: {:?}", e);
             Response::error("Failed to generate response", 500)
@@ -261,13 +326,15 @@ pub async fn handle_reset_progress(_req: Request, ctx: RouteContext<()>) -> Resu
     console_log!("Handling POST request to /api/reset/:topicId");
 
     let topic_id: String = ctx.param("topicId").map(|s| s.to_string()).unwrap_or_default();
-    console_log!("Resetting progress for topic ID: {}", topic_id);
+    console_log!("Resetting progress and conversation for topic ID: {}", topic_id);
 
     if !topic_exists(&topic_id) {
         return Response::error("Topic not found", 404);
     }
 
-    let kv = ctx.kv("PROGRESS_STORE")?;
+    let kv = ctx.kv("DATA_STORE")?;
+    
+    // Reset progress
     let progress = Progress {
         topic_id: topic_id.clone(),
         completed_steps: vec![],
@@ -277,9 +344,13 @@ pub async fn handle_reset_progress(_req: Request, ctx: RouteContext<()>) -> Resu
     kv.put(&topic_id, serde_json::to_string(&progress)?)?
         .execute().await?;
 
+    // Reset conversation history
+    let conversation_key = format!("conversation_{}", topic_id);
+    kv.delete(&conversation_key).await?;
+
     Response::from_json(&GenericResponse {
         status: 200,
-        message: format!("Progress reset for topic {}.", topic_id),
+        message: format!("Progress and conversation reset for topic {}.", topic_id),
     })
 }
 
@@ -294,4 +365,29 @@ pub async fn handle_reset_progress(_req: Request, ctx: RouteContext<()>) -> Resu
 /// A boolean indicating whether the topic exists.
 fn topic_exists(topic_id: &str) -> bool {
     matches!(topic_id, "github-setup" | "docker-basics")
+}
+
+pub async fn handle_get_conversation(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    console_log!("Handling GET request to /api/conversation/:topicId");
+
+    let topic_id: String = ctx.param("topicId").map(|s| s.to_string()).unwrap_or_default();
+    console_log!("Retrieving conversation for topic ID: {}", topic_id);
+
+    if !topic_exists(&topic_id) {
+        return Response::error("Topic not found", 404);
+    }
+
+    let kv = ctx.kv("DATA_STORE")?;
+    let conversation_key = format!("conversation_{}", topic_id);
+
+    match kv.get(&conversation_key).json::<ConversationHistory>().await? {
+        Some(conversation) => Response::from_json(&conversation),
+        None => {
+            let empty_conversation = ConversationHistory {
+                topic_id: topic_id.clone(),
+                messages: vec![],
+            };
+            Response::from_json(&empty_conversation)
+        }
+    }
 }

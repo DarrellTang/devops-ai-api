@@ -44,6 +44,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/progress/:topicId", handlers::handle_post_progress)
         .get_async("/api/progress/:topicId", handlers::handle_get_progress)
         .post_async("/api/chat/:topicId", handlers::handle_post_chat)
+        .get_async("/api/conversation/:topicId", handlers::handle_get_conversation)
         .post_async("/api/reset/:topicId", handlers::handle_reset_progress)
         .run(req, env)
         .await

@@ -1,6 +1,7 @@
 //! This module contains all the data structures used in the DevOps AI API.
 
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 /// Represents a learning topic in the DevOps AI system.
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,6 +54,26 @@ pub struct Progress {
     pub completed_steps: Vec<usize>,
     /// The current step the user is on
     pub current_step: usize,
+}
+
+/// Represents the overall conversation history for a specific topic.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConversationHistory {
+    /// The ID of the topic this conversation is associated with
+    pub topic_id: String,
+    /// List of messages in the conversation
+    pub messages: Vec<TimestampedChatMessage>,
+}
+
+/// Represents a single message in the conversation, with a timestamp.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TimestampedChatMessage {
+    /// The role of the message sender (e.g., "user" or "assistant")
+    pub role: String,
+    /// The content of the message
+    pub content: String,
+    /// The timestamp when the message was sent or received
+    pub timestamp: DateTime<Utc>,
 }
 
 /// Represents a chat message sent by the user.
