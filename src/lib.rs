@@ -7,6 +7,7 @@ mod types;
 mod handlers;
 mod claude;
 mod utils;
+mod topics;
 
 /// The main entry point for the Worker.
 ///

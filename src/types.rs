@@ -99,6 +99,8 @@ pub struct ClaudeRequest {
     pub max_tokens: u32,
     /// The conversation history and new message
     pub messages: Vec<ClaudeMessage>,
+    /// The system prompt to set the context for the conversation
+    pub system: Option<String>,
 }
 
 /// Represents a single message in the Claude API request.
@@ -108,6 +110,9 @@ pub struct ClaudeMessage {
     pub role: String,
     /// The content of the message
     pub content: String,
+    /// The name of the message sender (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// Represents the response from the Claude API.
