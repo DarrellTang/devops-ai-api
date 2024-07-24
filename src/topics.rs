@@ -12,7 +12,7 @@ pub fn get_github_setup_topic() -> Topic {
         initial_message: "Welcome to the GitHub Setup guide! This interactive tutorial will help you set up and use a GitHub account. Here's how it works:
 
 1. Steps and Prompts:
-   - On the left, you'll see a list of steps in your GitHub learning journey.
+   - On the left, you'll see a list of steps in your GitHub learning journey with a greyed out checkmark.
    - Each step is also a pre-written question that you can send to me, your AI assistant.
    - Clicking on a step will send its associated question, and I'll provide detailed instructions or information.
 
@@ -22,11 +22,10 @@ pub fn get_github_setup_topic() -> Topic {
    - Follow the instructions and ask any additional questions you have in the chat.
 
 3. Marking Progress:
-   - After completing a step, click the checkmark icon next to the send button to mark it as done.
+   - After completing a step, click the checkmark icon next to the step itself to mark it as done.
    - This helps you keep track of your progress and tells me you're ready for the next step.
 
 4. Flexibility:
-   - Feel free to click on any step, even out of order, if you need specific information.
    - If you're already familiar with some steps, you can mark them as complete and move on.
 
 5. Additional Questions:
