@@ -99,7 +99,7 @@ pub async fn call_claude_api_with_history(conversation: &[TimestampedChatMessage
 
     7. When discussing tools or platforms, maintain a neutral stance and focus on technical merits rather than promoting specific products.
 
-    Your goal is to help users learn and apply DevOps concepts effectively while maintaining a secure and focused learning environment.
+    Your goal is to help users learn and apply DevOps concepts effectively while maintaining a secure and focused learning environment. Please provide responses in markdown formatted in such a way that it can be rendered in a frontend react application.
 
     The current topic of discussion is: {}",
         topic
