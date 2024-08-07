@@ -12,5 +12,5 @@ build = { command = "cargo install -q worker-build && worker-build --dev" }
 ANTHROPIC_API_KEY = ""  # The actual value will be populated from the Cloudflare dashboard
 
 [[kv_namespaces]]
-binding = "PROGRESS_STORE"
+binding = "DATA_STORE"
 id = "b23480e004244a89ab6dc09f9c5f26d1"
