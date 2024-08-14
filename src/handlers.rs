@@ -212,7 +212,27 @@ pub async fn handle_post_chat(mut req: Request, ctx: RouteContext<()>) -> Result
               .execute()
               .await?;
 
-            Response::from_json(&ChatResponse { response })
+            // Get the current step and its suggested questions
+            let progress: Progress = match kv.get(&topic_id).json().await? {
+                Some(p) => p,
+                None => Progress {
+                    topic_id: topic_id.clone(),
+                    completed_steps: vec![],
+                    current_step: 0,
+                },
+            };
+
+            let topic = topics::get_github_setup_topic();
+            let suggested_questions = if progress.current_step < topic.steps.len() {
+                topic.steps[progress.current_step].suggested_questions.clone()
+            } else {
+                vec![]
+            };
+
+            Response::from_json(&ChatResponse { 
+                response,
+                suggested_questions,
+            })
         },
         Err(e) => {
             console_error!("Error calling Claude API: {:?}", e);

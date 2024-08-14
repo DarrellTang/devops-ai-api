@@ -25,6 +25,8 @@ pub struct Step {
     pub title: String,
     /// Prompt to be sent to the AI for this step
     pub prompt: String,
+    /// Suggested questions for this step
+    pub suggested_questions: Vec<String>,
 }
 
 /// Represents a generic response structure for API calls.
@@ -88,6 +90,8 @@ pub struct ChatMessage {
 pub struct ChatResponse {
     /// The AI-generated response
     pub response: String,
+    /// Suggested questions based on the current step
+    pub suggested_questions: Vec<String>,
 }
 
 /// Represents a request to the Claude API.
